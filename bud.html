@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Бюджет</title>
+    <meta charset='utf-8' />
+  <script src="https://code.jquery.com/jquery-1.10.2.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.6.0/Chart.js"></script>
+  <script src="KolorWheel.min.js"></script>
+  </head>
+  
+  <body>
+    <script type="text/javascript">
+    // (function($) {
+      var income_url = "http://spreadsheets.google.com/tq?tqx=out:html&gid=988891919&tq=SELECT%20A,B,C&key=1J_MwEo5_Cmxoz5D0tVuD9p3szNzQFENtfuZHRFsFnUo"
+      var outcome_url = "http://spreadsheets.google.com/tq?tqx=out:html&gid=0&tq=SELECT%20A,B,C,D,E&key=1J_MwEo5_Cmxoz5D0tVuD9p3szNzQFENtfuZHRFsFnUo"
+      var outcome_data = [];
+      var income_data = [];
+      var all_yearmonth_ids = [];
+      var all_outcome_categories = [];
+      var aggregated_outcomes = [];
+      var aggregated_incomes = [];
+      var total_aggregated_outcomes = [];
+      
+      function getMonthId(d){
+          return ""+d.getFullYear().toString()+d.getMonth().toString();
+      };
+
+      Chart.plugins.register({
+            afterDatasetsDraw: function(chart, easing) {
+                // To only draw at the end of animation, check for easing === 1
+                var ctx = chart.ctx;
+
+                chart.data.datasets.forEach(function (dataset, i) {
+                    var meta = chart.getDatasetMeta(i);
+                    if (!meta.hidden) {
+                        meta.data.forEach(function(element, index) {
+                            // Draw the text in black, with the specified font
+                            ctx.fillStyle = 'rgb(0, 0, 0)';
+
+                            var fontSize = 14;
+                            var fontStyle = 'normal';
+                            var fontFamily = 'Helvetica';
+                            ctx.font = Chart.helpers.fontString(fontSize, fontStyle, fontFamily);
+
+                            // Just naively convert to string for now
+                            var dataString = dataset.data[index].toLocaleString('ru-RU');
+
+                            // Make sure alignment settings are correct
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+
+                            var padding = 5;
+                            var position = element.tooltipPosition();
+                            ctx.fillText(dataString, position.x, position.y - (fontSize / 2) - padding);
+                        });
+                    }
+                });
+            }
+        });
+
+      //parse outcomes
+      $.get(outcome_url)
+        .done(function( data ) {
+          // console.log(data);
+          html = $.parseHTML( data );
+          var table = html[5];
+          for (var i = 1, row; row = table.rows[i]; i++) {
+            var current_row = []
+            for (var j = 0, col; col = row.cells[j]; j++) {
+              if (j==0) {
+                current_row[j] = new Date(col.innerText);
+                
+                
+              }
+              else if (j==1) {
+                current_row[j] = parseInt(col.innerText);
+              }
+              else {
+              current_row[j] = col.innerText;
+            };
+            };
+
+            month_id = getMonthId(current_row[0]);
+            if (all_yearmonth_ids.indexOf(month_id)==-1){
+                all_yearmonth_ids.push(month_id);
+              };
+            category = current_row[3];
+            if (all_outcome_categories.indexOf(category)==-1){
+              all_outcome_categories.push(category);
+            };
+
+            outcome_data.push(current_row);
+          }
+
+        // console.log(outcome_data);
+        // console.log(all_yearmonth_ids);
+        // console.log(all_outcome_categories);
+
+        //aggregates
+        for (var i=0; i<all_yearmonth_ids.length; i++){
+          var current_aggs = [];
+          for (var j=0;j<all_outcome_categories.length; j++){
+            current_aggs[j] = 0;
+          };
+          for (var j=0;j<outcome_data.length; j++){
+            if (getMonthId(outcome_data[j][0])==all_yearmonth_ids[i]){
+              current_aggs[all_outcome_categories.indexOf(outcome_data[j][3])] += outcome_data[j][1];
+            };
+          };
+          aggregated_outcomes[i] = current_aggs;
+          total_aggregated_outcomes[i] = 0;
+          for (var j=0;j<all_outcome_categories.length; j++){
+            total_aggregated_outcomes[i]+=current_aggs[j];
+          };
+        };
+        console.log(aggregated_outcomes);
+
+        var all_colors = [];
+        (new KolorWheel("#0000cc")).abs( 0,-1,-1,all_outcome_categories.length).each(function() {
+          all_colors.push(this.getHex())
+        });
+
+        
+
+        //add charts
+        for (var i=0; i<all_yearmonth_ids.length; i++){
+          var chart_id = "mchart" + all_yearmonth_ids[i];
+          console.log(all_yearmonth_ids[i]);
+          $( "body" ).append( '<canvas id="' + chart_id + '" width="900" height="300"></canvas>');
+          var ctx = document.getElementById(chart_id).getContext('2d');
+          var chart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                      labels: all_outcome_categories,
+                      datasets: [{
+                        label: all_yearmonth_ids[i].substr(0,4) + "." + (parseInt(all_yearmonth_ids[i].substr(4))+1),
+                        data: aggregated_outcomes[i],
+                        backgroundColor: all_colors,
+                        borderWidth: 1
+                      }]
+                    },
+                    options: {
+                      scales: {
+                        yAxes: [{
+                          ticks: {
+                            beginAtZero:true,
+                            suggestedMax: 150000
+                            }
+                        }],
+                        xAxes: [{
+                          ticks: {
+                            autoSkip:false
+                          }
+                        }]
+                      }
+                    }
+                  });
+          
+        };
+
+        $.get(income_url)
+        .done(function( data ) {
+          html = $.parseHTML( data );
+          var table = html[5];
+          for (var i = 1, row; row = table.rows[i]; i++) {
+            var current_row = []
+            for (var j = 0, col; col = row.cells[j]; j++) {
+              if (j==0) {
+                current_row[j] = new Date(col.innerText);
+                
+                
+              }
+              else if (j==1) {
+                current_row[j] = parseInt(col.innerText);
+              }
+              else {
+              current_row[j] = col.innerText;
+            };
+            };
+
+            month_id = getMonthId(current_row[0]);
+            if (all_yearmonth_ids.indexOf(month_id)==-1){
+                all_yearmonth_ids.push(month_id);
+              };
+            income_data.push(current_row);
+          };
+
+          for (var i=0; i<all_yearmonth_ids.length; i++){
+            aggregated_incomes[i] = 0;
+            for (var j=0;j<income_data.length; j++){
+              if (getMonthId(income_data[j][0])==all_yearmonth_ids[i]){
+                aggregated_incomes[i] += income_data[j][1];
+              };
+            };
+          };
+          console.log(total_aggregated_outcomes);
+          console.log(aggregated_incomes);
+
+          var ym_labels = [];
+          for (var i=0; i<all_yearmonth_ids.length; i++){
+            ym_labels[i] = all_yearmonth_ids[i].substr(0,4) + "." + (parseInt(all_yearmonth_ids[i].substr(4))+1);
+          };
+          var chart_id = "total_chart";
+          $( "body" ).prepend( '<canvas id="' + chart_id + '" width="900" height="300"></canvas>');
+          var ctx = document.getElementById(chart_id).getContext('2d');
+          var chart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                      labels: ym_labels,
+                      datasets: [{
+                        label: 'Расход',
+                        data: total_aggregated_outcomes,
+                        backgroundColor: 'red',
+                        borderWidth: 1
+                      },
+                      {
+                        label: 'Доход',
+                        data: aggregated_incomes,
+                        backgroundColor: 'green',
+                        borderWidth: 1
+                      }
+                      ]
+                    },
+                    options: {
+                      scales: {
+                        yAxes: [{
+                          ticks: {
+                            beginAtZero:true
+                            }
+                        }],
+                        xAxes: [{
+                          ticks: {
+                            autoSkip:false
+                          }
+                        }]
+                      }
+                    }
+                  });
+
+        });
+
+      });
+      
+
+      
+
+
+    // }(jQuery));
+
+    
+
+    </script>
+  </body>
+</html>
